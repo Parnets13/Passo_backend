@@ -95,7 +95,7 @@ npm run dev
 npm start
 ```
 
-Server will start on `http://localhost:5000`
+Server will start on `https://passo-backend.onrender.com`
 
 ## 📡 API Endpoints
 
@@ -197,7 +197,7 @@ Authorization: Bearer <your-jwt-token>
 ### Login Example
 
 ```bash
-curl -X POST http://localhost:5000/api/auth/login \
+curl -X POST https://passo-backend.onrender.com/api/auth/login \
   -H "Content-Type: application/json" \
   -d '{
     "email": "admin@admin.com",
