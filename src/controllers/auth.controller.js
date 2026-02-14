@@ -306,3 +306,97 @@ export const workerLogin = async (req, res, next) => {
     next(error);
   }
 };
+
+// @desc    Forgot password - Send reset token
+// @route   POST /api/auth/forgot-password
+// @access  Public
+export const forgotPassword = async (req, res, next) => {
+  try {
+    const { email } = req.body;
+
+    // Check if admin exists
+    const admin = await Admin.findOne({ email });
+
+    if (!admin) {
+      return res.status(404).json({
+        success: false,
+        message: 'No account found with this email address'
+      });
+    }
+
+    // Generate reset token (6-digit code)
+    const resetToken = Math.floor(100000 + Math.random() * 900000).toString();
+    
+    // Hash token and set to resetPasswordToken field
+    const crypto = await import('crypto');
+    admin.resetPasswordToken = crypto.createHash('sha256').update(resetToken).digest('hex');
+    
+    // Set expire time (10 minutes)
+    admin.resetPasswordExpire = Date.now() + 10 * 60 * 1000;
+    
+    await admin.save();
+
+    // In production, send email with reset token
+    // For now, return token in response (remove this in production)
+    console.log('Password reset token:', resetToken);
+
+    res.status(200).json({
+      success: true,
+      message: 'Password reset code sent to your email',
+      // Remove this in production - only for development
+      resetToken: process.env.NODE_ENV === 'development' ? resetToken : undefined
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Reset password with token
+// @route   POST /api/auth/reset-password
+// @access  Public
+export const resetPassword = async (req, res, next) => {
+  try {
+    const { email, resetToken, newPassword } = req.body;
+
+    // Hash the provided token
+    const crypto = await import('crypto');
+    const hashedToken = crypto.createHash('sha256').update(resetToken).digest('hex');
+
+    // Find admin with matching token and not expired
+    const admin = await Admin.findOne({
+      email,
+      resetPasswordToken: hashedToken,
+      resetPasswordExpire: { $gt: Date.now() }
+    });
+
+    if (!admin) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid or expired reset code'
+      });
+    }
+
+    // Set new password
+    admin.password = newPassword;
+    admin.resetPasswordToken = undefined;
+    admin.resetPasswordExpire = undefined;
+    await admin.save();
+
+    // Generate new token
+    const token = generateToken(admin._id);
+
+    res.status(200).json({
+      success: true,
+      message: 'Password reset successful',
+      token,
+      admin: {
+        id: admin._id,
+        name: admin.name,
+        email: admin.email,
+        role: admin.role
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
