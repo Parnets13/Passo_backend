@@ -68,7 +68,6 @@ const userSchema = new mongoose.Schema({
 });
 
 // Index for faster queries
-userSchema.index({ mobile: 1 });
 userSchema.index({ status: 1 });
 
 export default mongoose.model('User', userSchema);

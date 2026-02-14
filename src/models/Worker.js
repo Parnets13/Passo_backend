@@ -164,7 +164,6 @@ const workerSchema = new mongoose.Schema({
 });
 
 // Indexes for faster queries
-workerSchema.index({ mobile: 1 });
 workerSchema.index({ status: 1 });
 workerSchema.index({ category: 1 });
 workerSchema.index({ city: 1 });
