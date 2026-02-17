@@ -12,6 +12,7 @@ import analyticsRoutes from './analytics.routes.js';
 import notificationRoutes from './notification.routes.js';
 import cmsRoutes from './cms.routes.js';
 import reviewRoutes from './review.routes.js';
+import adminRoutes from './admin.routes.js';
 import { apiLimiter } from '../middleware/rateLimiter.js';
 
 const router = express.Router();
@@ -21,6 +22,7 @@ router.use(apiLimiter);
 
 // Public routes
 router.use('/auth', authRoutes);
+router.use('/admin', adminRoutes); // Public admin routes for admin panel
 
 // Protected routes (require authentication)
 router.use('/dashboard', dashboardRoutes);

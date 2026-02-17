@@ -18,12 +18,14 @@ const app = express();
 connectDB();
 
 // Security middleware
-app.use(helmet());
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: "cross-origin" }
+}));
 
 // CORS configuration - support multiple origins and mobile apps
 const allowedOrigins = process.env.CORS_ORIGIN 
   ? process.env.CORS_ORIGIN.split(',').map(origin => origin.trim())
-  : ['http://localhost:5173','https://paaso.netlify.app'];
+  : ['http://localhost:5173','http://localhost:4001','https://paaso.netlify.app','http://192.168.1.48:8081'];
 
 app.use(cors({
   origin: function (origin, callback) {
