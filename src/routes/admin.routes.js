@@ -302,4 +302,44 @@ router.delete('/workers/:id', async (req, res) => {
   }
 });
 
+// ============================================
+// LEGACY ROUTE SUPPORT
+// Support old admin panel URLs for backward compatibility
+// ============================================
+
+// Legacy route: /api/workers (redirect to /api/admin/workers)
+router.get('/legacy-workers', async (req, res) => {
+  try {
+    console.log('📊 Legacy route accessed, redirecting to admin/workers');
+    const Worker = (await import('../models/Worker.js')).default;
+    
+    const workers = await Worker.find({})
+      .select('-password')
+      .sort({ createdAt: -1 })
+      .limit(50);
+
+    const total = await Worker.countDocuments();
+
+    console.log(`✅ Legacy: Found ${workers.length} workers (Total: ${total})`);
+
+    res.status(200).json({
+      success: true,
+      data: workers,
+      pagination: {
+        page: 1,
+        limit: 50,
+        total,
+        pages: Math.ceil(total / 50)
+      }
+    });
+  } catch (error) {
+    console.error('❌ Legacy workers fetch error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch workers',
+      error: error.message
+    });
+  }
+});
+
 export default router;

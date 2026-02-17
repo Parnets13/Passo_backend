@@ -65,6 +65,29 @@ router.post('/check-mobile', async (req, res) => {
 });
 
 // ============================================
+// ADMIN ROUTES (PROTECTED - AUTHENTICATION REQUIRED)
+// ============================================
+
+// Admin workers list - TEMPORARILY PUBLIC for admin panel testing
+// TODO: Add proper admin authentication
+router.get('/', getWorkers);
+router.get('/:id', getWorkerById);
+
+// Action routes (must come before generic /:id DELETE to avoid conflicts)
+router.post('/:id/approve', protect, approveWorker);
+router.post('/:id/reject', protect, rejectWorker);
+router.post('/:id/block', protect, blockWorker);
+router.post('/:id/unblock', protect, unblockWorker);
+router.post('/:id/featured', protect, markFeatured);
+router.delete('/:id/featured', protect, removeFeatured);
+router.post('/:id/badge', protect, assignBadge);
+router.delete('/:id/badge', protect, removeBadge);
+router.post('/:id/kyc/approve', protect, approveKYC);
+
+// Delete route (must come after specific routes)
+router.delete('/:id', protect, deleteWorker);
+
+// ============================================
 // PROTECTED ROUTES (AUTHENTICATION REQUIRED)
 // ============================================
 
@@ -347,22 +370,5 @@ router.get('/dashboard', async (req, res) => {
     });
   }
 });
-
-router.get('/', getWorkers);
-router.get('/:id', getWorkerById);
-
-// Action routes (must come before generic /:id DELETE to avoid conflicts)
-router.post('/:id/approve', approveWorker);
-router.post('/:id/reject', rejectWorker);
-router.post('/:id/block', blockWorker);
-router.post('/:id/unblock', unblockWorker);
-router.post('/:id/featured', markFeatured);
-router.delete('/:id/featured', removeFeatured);
-router.post('/:id/badge', assignBadge);
-router.delete('/:id/badge', removeBadge);
-router.post('/:id/kyc/approve', approveKYC);
-
-// Delete route (must come after specific routes)
-router.delete('/:id', deleteWorker);
 
 export default router;
