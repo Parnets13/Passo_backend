@@ -30,7 +30,9 @@ const adminSchema = new mongoose.Schema({
     enum: ['Active', 'Inactive'],
     default: 'Active'
   },
-  lastLogin: Date
+  lastLogin: Date,
+  resetPasswordToken: String,
+  resetPasswordExpire: Date
 }, {
   timestamps: true
 });
