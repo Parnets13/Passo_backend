@@ -188,14 +188,66 @@ export const registerWorker = async (req, res, next) => {
     const existingWorker = await Worker.findOne({ mobile });
 
     if (existingWorker) {
-      console.log('❌ Worker already exists with mobile:', mobile);
-      return res.status(400).json({
-        success: false,
-        message: 'Worker with this mobile number already exists'
-      });
+      console.log('⚠️ Worker already exists with mobile:', mobile);
+      console.log('   Worker Status:', existingWorker.status);
+      console.log('   Worker Name:', existingWorker.name);
+      
+      // Return appropriate message based on status
+      if (existingWorker.status === 'Approved') {
+        return res.status(400).json({
+          success: false,
+          message: 'This mobile number is already registered. Please login instead.',
+          alreadyRegistered: true,
+          status: existingWorker.status
+        });
+      } else if (existingWorker.status === 'Pending') {
+        return res.status(400).json({
+          success: false,
+          message: 'Your registration is pending admin approval. Please wait.',
+          alreadyRegistered: true,
+          status: existingWorker.status
+        });
+      } else if (existingWorker.status === 'Rejected') {
+        return res.status(400).json({
+          success: false,
+          message: 'Your previous registration was rejected. Please contact support.',
+          alreadyRegistered: true,
+          status: existingWorker.status
+        });
+      } else {
+        return res.status(400).json({
+          success: false,
+          message: `Account exists with status: ${existingWorker.status}. Please contact support.`,
+          alreadyRegistered: true,
+          status: existingWorker.status
+        });
+      }
     }
 
     console.log('✅ Worker does not exist, creating new worker...');
+
+    // Ensure category is an array
+    let categoryArray = category;
+    if (!Array.isArray(category)) {
+      categoryArray = category ? [category] : ['General'];
+    } else if (category.length === 0) {
+      categoryArray = ['General'];
+    }
+
+    console.log('📦 Category Array:', categoryArray);
+
+    // Handle onboardingFee - can be string (transaction ID) or object
+    let onboardingFeeData = onboardingFee;
+    if (typeof onboardingFee === 'string') {
+      onboardingFeeData = {
+        paid: true,
+        transactionId: onboardingFee,
+        amount: 499,
+        paidAt: new Date()
+      };
+    }
+
+    console.log('💳 Onboarding Fee:', onboardingFeeData);
 
     // Create worker with Pending status
     const worker = await Worker.create({
@@ -205,10 +257,10 @@ export const registerWorker = async (req, res, next) => {
       password,
       languages,
       workerType,
-      category,
+      category: categoryArray,
       serviceArea,
       city,
-      teamSize,
+      teamSize: teamSize || 1, // Default to 1 if not provided
       profilePhoto,
       aadhaarDoc,
       panCard,
@@ -216,7 +268,7 @@ export const registerWorker = async (req, res, next) => {
       gstNumber,
       msmeCertificate,
       msmeNumber,
-      onboardingFee,
+      onboardingFee: onboardingFeeData,
       status: 'Pending', // Always pending until admin approves
       verified: false,
       kycVerified: false
@@ -232,12 +284,19 @@ export const registerWorker = async (req, res, next) => {
     res.status(201).json({
       success: true,
       message: 'Registration submitted successfully. Pending admin approval.',
-      data: {
+      worker: {
         _id: worker._id,
         name: worker.name,
         email: worker.email,
         mobile: worker.mobile,
-        status: worker.status
+        workerType: worker.workerType,
+        category: worker.category,
+        serviceArea: worker.serviceArea,
+        city: worker.city,
+        languages: worker.languages,
+        status: worker.status,
+        verified: worker.verified,
+        kycVerified: worker.kycVerified
       }
     });
   } catch (error) {

@@ -51,10 +51,7 @@ const workerSchema = new mongoose.Schema({
     required: true
   },
   pincode: String,
-  teamSize: {
-    type: Number,
-    min: 2
-  },
+  teamSize: Number,
   profilePhoto: String,
   
   // Documents
@@ -113,13 +110,8 @@ const workerSchema = new mongoose.Schema({
   
   // Payment Info
   onboardingFee: {
-    paid: {
-      type: Boolean,
-      default: false
-    },
-    amount: Number,
-    transactionId: String,
-    paidAt: Date
+    type: mongoose.Schema.Types.Mixed,
+    default: null
   },
   
   // Subscription
@@ -150,6 +142,27 @@ const workerSchema = new mongoose.Schema({
   totalReviews: {
     type: Number,
     default: 0
+  },
+  
+  // Notification Preferences
+  notificationPreferences: {
+    pushEnabled: { type: Boolean, default: true },
+    jobAlerts: { type: Boolean, default: true },
+    messageAlerts: { type: Boolean, default: true },
+    paymentAlerts: { type: Boolean, default: true },
+    promotions: { type: Boolean, default: false },
+    emailNotifications: { type: Boolean, default: true },
+    smsNotifications: { type: Boolean, default: false }
+  },
+  
+  // Privacy Settings
+  privacySettings: {
+    profileVisible: { type: Boolean, default: true },
+    showPhone: { type: Boolean, default: false },
+    showLocation: { type: Boolean, default: true },
+    allowMessages: { type: Boolean, default: true },
+    showOnlineStatus: { type: Boolean, default: true },
+    shareAnalytics: { type: Boolean, default: true }
   },
   
   // Rejection reason

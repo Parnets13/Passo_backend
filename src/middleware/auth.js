@@ -1,5 +1,6 @@
 import jwt from 'jsonwebtoken';
 import Admin from '../models/Admin.js';
+import Worker from '../models/Worker.js';
 
 export const protect = async (req, res, next) => {
   try {
@@ -21,21 +22,43 @@ export const protect = async (req, res, next) => {
       // Verify token
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
-      // Get admin from token
-      req.admin = await Admin.findById(decoded.id).select('-password');
-
-      if (!req.admin) {
-        return res.status(401).json({
-          success: false,
-          message: 'Admin not found'
-        });
-      }
-
-      if (req.admin.status !== 'Active') {
-        return res.status(401).json({
-          success: false,
-          message: 'Admin account is inactive'
-        });
+      // Try to find admin first
+      let user = await Admin.findById(decoded.id).select('-password');
+      
+      if (user) {
+        // It's an admin
+        req.admin = user;
+        req.userType = 'admin';
+        
+        if (user.status !== 'Active') {
+          return res.status(401).json({
+            success: false,
+            message: 'Admin account is inactive'
+          });
+        }
+      } else {
+        // Try to find worker
+        user = await Worker.findById(decoded.id).select('-password');
+        
+        if (user) {
+          // It's a worker
+          req.user = user;
+          req.admin = user; // For backward compatibility
+          req.userType = 'worker';
+          
+          if (user.status !== 'Approved') {
+            return res.status(401).json({
+              success: false,
+              message: `Your account is ${user.status}. Please wait for admin approval.`,
+              status: user.status
+            });
+          }
+        } else {
+          return res.status(401).json({
+            success: false,
+            message: 'User not found'
+          });
+        }
       }
 
       next();
@@ -55,10 +78,12 @@ export const protect = async (req, res, next) => {
 
 export const authorize = (...roles) => {
   return (req, res, next) => {
-    if (!roles.includes(req.admin.role)) {
+    const userRole = req.admin?.role || req.user?.workerType;
+    
+    if (!roles.includes(userRole)) {
       return res.status(403).json({
         success: false,
-        message: `Role ${req.admin.role} is not authorized to access this route`
+        message: `Role ${userRole} is not authorized to access this route`
       });
     }
     next();

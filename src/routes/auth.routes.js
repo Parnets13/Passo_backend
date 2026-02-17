@@ -23,7 +23,21 @@ const workerRegisterValidation = [
   body('name').trim().notEmpty().withMessage('Name is required'),
   body('mobile').matches(/^\d{10}$/).withMessage('Please provide a valid 10-digit mobile number'),
   body('password').isLength({ min: 6 }).withMessage('Password must be at least 6 characters'),
-  body('category').notEmpty().withMessage('Category is required'),
+  body('category').custom((value) => {
+    if (!value) {
+      throw new Error('Category is required');
+    }
+    if (Array.isArray(value)) {
+      if (value.length === 0) {
+        throw new Error('At least one category is required');
+      }
+      return true;
+    }
+    if (typeof value === 'string' && value.trim().length > 0) {
+      return true;
+    }
+    throw new Error('Category must be a non-empty array or string');
+  }),
   body('serviceArea').notEmpty().withMessage('Service area is required')
 ];
 
