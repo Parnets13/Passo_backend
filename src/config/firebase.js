@@ -18,11 +18,18 @@ export const initializeFirebase = () => {
       return admin;
     }
 
-    // Path to service account key
-    const serviceAccountPath = join(__dirname, '../../firebase-service-account.json');
-    
-    // Read service account key
-    const serviceAccount = JSON.parse(readFileSync(serviceAccountPath, 'utf8'));
+    let serviceAccount;
+
+    // Try to load from environment variable first (for Render deployment)
+    if (process.env.FIREBASE_SERVICE_ACCOUNT) {
+      console.log('📱 Loading Firebase credentials from environment variable');
+      serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+    } else {
+      // Fallback to file (for local development)
+      console.log('📱 Loading Firebase credentials from file');
+      const serviceAccountPath = join(__dirname, '../../firebase-service-account.json');
+      serviceAccount = JSON.parse(readFileSync(serviceAccountPath, 'utf8'));
+    }
 
     // Initialize Firebase Admin
     admin.initializeApp({
@@ -37,7 +44,7 @@ export const initializeFirebase = () => {
     return admin;
   } catch (error) {
     console.error('❌ Firebase Admin initialization failed:', error.message);
-    console.error('💡 Make sure firebase-service-account.json exists in Passo_backend/');
+    console.error('💡 Set FIREBASE_SERVICE_ACCOUNT env variable or add firebase-service-account.json file');
     throw error;
   }
 };

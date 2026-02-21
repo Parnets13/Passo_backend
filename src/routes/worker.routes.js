@@ -91,6 +91,7 @@ router.post('/verify-otp', async (req, res) => {
         message: 'Mobile number and OTP are required'
       });
     }
+    console.log("Hiooi")
 
     // Check if OTP exists
     const storedData = otpStore.get(mobile);
