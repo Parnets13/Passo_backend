@@ -5,6 +5,7 @@ import helmet from 'helmet';
 import morgan from 'morgan';
 import compression from 'compression';
 import connectDB from './config/database.js';
+import { initializeFirebase } from './config/firebase.js';
 import errorHandler from './middleware/errorHandler.js';
 import routes from './routes/index.js';
 
@@ -16,6 +17,9 @@ const app = express();
 
 // Connect to MongoDB
 connectDB();
+
+// Initialize Firebase Admin SDK
+initializeFirebase();
 
 // Security middleware
 app.use(helmet());
@@ -61,8 +65,21 @@ app.use(errorHandler);
 
 // Start server
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
+const HOST = '0.0.0.0'; // Listen on all network interfaces
+
+app.listen(PORT, HOST, () => {
   console.log(`🚀 Server running in ${process.env.NODE_ENV} mode on port ${PORT}`);
+  
+  // Show appropriate URLs based on environment
+  if (process.env.NODE_ENV === 'production') {
+    console.log(`📡 Production server running on Render`);
+    console.log(`   - https://passo-backend.onrender.com`);
+  } else {
+    console.log(`📡 Development server accessible at:`);
+    console.log(`   - http://localhost:${PORT}`);
+    console.log(`   - http://127.0.0.1:${PORT}`);
+    console.log(`   - http://10.0.2.2:${PORT} (Android Emulator)`);
+  }
 });
 
 export default app;

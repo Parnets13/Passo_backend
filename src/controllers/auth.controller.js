@@ -174,7 +174,11 @@ export const registerWorker = async (req, res, next) => {
       gstNumber,
       msmeCertificate,
       msmeNumber,
-      onboardingFee
+      onboardingFee,
+      paymentScreenshot,
+      availability,
+      online,
+      fcmToken
     } = req.body;
 
     console.log('✅ Data extracted from request');
@@ -269,6 +273,10 @@ export const registerWorker = async (req, res, next) => {
       msmeCertificate,
       msmeNumber,
       onboardingFee: onboardingFeeData,
+      paymentScreenshot, // Add payment screenshot
+      availability: availability || 'online', // Add availability status
+      online: online !== undefined ? online : true, // Add online status
+      fcmToken: fcmToken || null, // ✅ Add FCM token for push notifications
       status: 'Pending', // Always pending until admin approves
       verified: false,
       kycVerified: false
@@ -296,7 +304,10 @@ export const registerWorker = async (req, res, next) => {
         languages: worker.languages,
         status: worker.status,
         verified: worker.verified,
-        kycVerified: worker.kycVerified
+        kycVerified: worker.kycVerified,
+        availability: worker.availability,
+        online: worker.online,
+        badges: worker.badges || []
       }
     });
   } catch (error) {
@@ -309,7 +320,7 @@ export const registerWorker = async (req, res, next) => {
 // @access  Public
 export const workerLogin = async (req, res, next) => {
   try {
-    const { mobile, password } = req.body;
+    const { mobile, password, fcmToken } = req.body;
 
     // Check if worker exists
     const worker = await Worker.findOne({ mobile }).select('+password');
@@ -343,9 +354,13 @@ export const workerLogin = async (req, res, next) => {
     // Generate token
     const token = generateToken(worker._id);
 
-    // Update last seen
+    // Update last seen, online status, and FCM token
     worker.lastSeen = new Date();
     worker.online = true;
+    if (fcmToken) {
+      worker.fcmToken = fcmToken;
+      console.log('✅ FCM token updated for worker:', worker.name);
+    }
     await worker.save();
 
     res.status(200).json({
@@ -454,6 +469,45 @@ export const resetPassword = async (req, res, next) => {
         email: admin.email,
         role: admin.role
       }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Update FCM token for worker
+// @route   POST /api/auth/update-fcm-token
+// @access  Private (Worker)
+export const updateFCMToken = async (req, res, next) => {
+  try {
+    const { fcmToken } = req.body;
+
+    if (!fcmToken) {
+      return res.status(400).json({
+        success: false,
+        message: 'FCM token is required'
+      });
+    }
+
+    // Update worker's FCM token
+    const worker = await Worker.findByIdAndUpdate(
+      req.worker.id,
+      { fcmToken },
+      { new: true }
+    );
+
+    if (!worker) {
+      return res.status(404).json({
+        success: false,
+        message: 'Worker not found'
+      });
+    }
+
+    console.log('✅ FCM token updated for worker:', worker.name);
+
+    res.status(200).json({
+      success: true,
+      message: 'FCM token updated successfully'
     });
   } catch (error) {
     next(error);

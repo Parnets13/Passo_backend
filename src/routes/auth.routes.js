@@ -1,6 +1,6 @@
 import express from 'express';
 import { body } from 'express-validator';
-import { login, register, getMe, logout, registerWorker, workerLogin, forgotPassword, resetPassword } from '../controllers/auth.controller.js';
+import { login, register, getMe, logout, registerWorker, workerLogin, forgotPassword, resetPassword, updateFCMToken } from '../controllers/auth.controller.js';
 import { protect } from '../middleware/auth.js';
 import { validate } from '../middleware/validate.js';
 import { authLimiter } from '../middleware/rateLimiter.js';
@@ -67,5 +67,8 @@ router.post('/reset-password', authLimiter, resetPasswordValidation, validate, r
 // Worker routes
 router.post('/worker/register', authLimiter, workerRegisterValidation, validate, registerWorker);
 router.post('/worker/login', authLimiter, workerLoginValidation, validate, workerLogin);
+
+// FCM token update (protected route)
+router.post('/update-fcm-token', protect, updateFCMToken);
 
 export default router;

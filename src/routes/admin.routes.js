@@ -343,3 +343,252 @@ router.get('/legacy-workers', async (req, res) => {
 });
 
 export default router;
+
+
+// ============================================
+// NOTIFICATION MANAGEMENT ROUTES
+// ============================================
+
+// Create notification
+router.post('/notifications', async (req, res) => {
+  try {
+    console.log('🔔 Admin: Creating notification');
+    const Notification = (await import('../models/Notification.js')).default;
+    
+    const {
+      title,
+      message,
+      type = 'Push',
+      targetAudience = 'All',
+      cities,
+      categories,
+      userIds,
+      bannerImage,
+      bannerPosition,
+      bannerLink,
+      scheduledAt
+    } = req.body;
+    
+    // Validate required fields
+    if (!title || !message) {
+      return res.status(400).json({
+        success: false,
+        message: 'Title and message are required'
+      });
+    }
+    
+    // Create notification
+    const notification = await Notification.create({
+      title,
+      message,
+      type,
+      targetAudience,
+      cities,
+      categories,
+      userIds,
+      bannerImage,
+      bannerPosition,
+      bannerLink,
+      scheduledAt,
+      status: scheduledAt ? 'Scheduled' : 'Sent',
+      sentAt: scheduledAt ? null : new Date(),
+      createdBy: req.body.adminId || '000000000000000000000000' // Default admin ID
+    });
+    
+    console.log('✅ Notification created:', notification._id);
+    
+    // If not scheduled, send immediately
+    if (!scheduledAt) {
+      // TODO: Implement push notification sending via FCM
+      console.log('📤 Sending push notification...');
+    }
+    
+    res.status(201).json({
+      success: true,
+      message: 'Notification created successfully',
+      data: notification
+    });
+  } catch (error) {
+    console.error('❌ Create notification error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to create notification',
+      error: error.message
+    });
+  }
+});
+
+// Get all notifications
+router.get('/notifications', async (req, res) => {
+  try {
+    console.log('🔔 Admin: Fetching all notifications');
+    const Notification = (await import('../models/Notification.js')).default;
+    
+    const {
+      page = 1,
+      limit = 20,
+      type,
+      status,
+      sortBy = 'createdAt',
+      order = 'desc'
+    } = req.query;
+    
+    // Build query
+    const query = {};
+    if (type) query.type = type;
+    if (status) query.status = status;
+    
+    // Execute query with pagination
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+    const sortOrder = order === 'desc' ? -1 : 1;
+    
+    const notifications = await Notification.find(query)
+      .sort({ [sortBy]: sortOrder })
+      .skip(skip)
+      .limit(parseInt(limit));
+    
+    const total = await Notification.countDocuments(query);
+    
+    console.log(`✅ Found ${notifications.length} notifications (Total: ${total})`);
+    
+    res.status(200).json({
+      success: true,
+      data: notifications,
+      pagination: {
+        page: parseInt(page),
+        limit: parseInt(limit),
+        total,
+        pages: Math.ceil(total / parseInt(limit))
+      }
+    });
+  } catch (error) {
+    console.error('❌ Get notifications error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch notifications',
+      error: error.message
+    });
+  }
+});
+
+// Get single notification
+router.get('/notifications/:id', async (req, res) => {
+  try {
+    console.log('🔔 Admin: Fetching notification:', req.params.id);
+    const Notification = (await import('../models/Notification.js')).default;
+    
+    const notification = await Notification.findById(req.params.id);
+    
+    if (!notification) {
+      return res.status(404).json({
+        success: false,
+        message: 'Notification not found'
+      });
+    }
+    
+    res.status(200).json({
+      success: true,
+      data: notification
+    });
+  } catch (error) {
+    console.error('❌ Get notification error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch notification',
+      error: error.message
+    });
+  }
+});
+
+// Update notification
+router.put('/notifications/:id', async (req, res) => {
+  try {
+    console.log('🔔 Admin: Updating notification:', req.params.id);
+    const Notification = (await import('../models/Notification.js')).default;
+    
+    const notification = await Notification.findByIdAndUpdate(
+      req.params.id,
+      req.body,
+      { new: true, runValidators: true }
+    );
+    
+    if (!notification) {
+      return res.status(404).json({
+        success: false,
+        message: 'Notification not found'
+      });
+    }
+    
+    res.status(200).json({
+      success: true,
+      message: 'Notification updated successfully',
+      data: notification
+    });
+  } catch (error) {
+    console.error('❌ Update notification error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to update notification',
+      error: error.message
+    });
+  }
+});
+
+// Delete notification
+router.delete('/notifications/:id', async (req, res) => {
+  try {
+    console.log('🔔 Admin: Deleting notification:', req.params.id);
+    const Notification = (await import('../models/Notification.js')).default;
+    
+    const notification = await Notification.findByIdAndDelete(req.params.id);
+    
+    if (!notification) {
+      return res.status(404).json({
+        success: false,
+        message: 'Notification not found'
+      });
+    }
+    
+    res.status(200).json({
+      success: true,
+      message: 'Notification deleted successfully'
+    });
+  } catch (error) {
+    console.error('❌ Delete notification error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to delete notification',
+      error: error.message
+    });
+  }
+});
+
+// Get notification stats
+router.get('/notifications/stats/summary', async (req, res) => {
+  try {
+    console.log('📊 Admin: Fetching notification stats');
+    const Notification = (await import('../models/Notification.js')).default;
+    
+    const totalNotifications = await Notification.countDocuments();
+    const sentNotifications = await Notification.countDocuments({ status: 'Sent' });
+    const scheduledNotifications = await Notification.countDocuments({ status: 'Scheduled' });
+    const draftNotifications = await Notification.countDocuments({ status: 'Draft' });
+    
+    res.status(200).json({
+      success: true,
+      data: {
+        totalNotifications,
+        sentNotifications,
+        scheduledNotifications,
+        draftNotifications
+      }
+    });
+  } catch (error) {
+    console.error('❌ Get notification stats error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch notification stats',
+      error: error.message
+    });
+  }
+});

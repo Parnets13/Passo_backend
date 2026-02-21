@@ -63,6 +63,7 @@ const workerSchema = new mongoose.Schema({
   gstNumber: String,
   msmeCertificate: String,
   msmeNumber: String,
+  paymentScreenshot: String, // Payment screenshot for verification
   
   // Status & Verification
   status: {
@@ -107,6 +108,11 @@ const workerSchema = new mongoose.Schema({
     default: false
   },
   lastSeen: Date,
+  availability: {
+    type: String,
+    enum: ['online', 'busy', 'offline'],
+    default: 'online'
+  },
   
   // Payment Info
   onboardingFee: {
@@ -155,6 +161,21 @@ const workerSchema = new mongoose.Schema({
     smsNotifications: { type: Boolean, default: false }
   },
   
+  // FCM Token for push notifications
+  fcmToken: {
+    type: String,
+    default: null
+  },
+  devicePlatform: {
+    type: String,
+    enum: ['android', 'ios', 'unknown'],
+    default: 'unknown'
+  },
+  lastTokenUpdate: {
+    type: Date,
+    default: null
+  },
+  
   // Privacy Settings
   privacySettings: {
     profileVisible: { type: Boolean, default: true },
@@ -198,6 +219,22 @@ workerSchema.pre('save', async function(next) {
 workerSchema.methods.comparePassword = async function(enteredPassword) {
   const bcrypt = await import('bcryptjs');
   return await bcrypt.default.compare(enteredPassword, this.password);
+};
+
+// Generate JWT token
+workerSchema.methods.generateAuthToken = function() {
+  const jwt = require('jsonwebtoken');
+  const token = jwt.sign(
+    { 
+      id: this._id,
+      mobile: this.mobile,
+      workerType: this.workerType,
+      status: this.status
+    },
+    process.env.JWT_SECRET || 'your-super-secret-jwt-key-change-this-in-production-2024',
+    { expiresIn: process.env.JWT_EXPIRE || '7d' }
+  );
+  return token;
 };
 
 export default mongoose.model('Worker', workerSchema);

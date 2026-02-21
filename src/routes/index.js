@@ -13,6 +13,7 @@ import notificationRoutes from './notification.routes.js';
 import cmsRoutes from './cms.routes.js';
 import reviewRoutes from './review.routes.js';
 import adminRoutes from './admin.routes.js';
+import firebaseRoutes from './firebase.routes.js';
 import { apiLimiter } from '../middleware/rateLimiter.js';
 
 const router = express.Router();
@@ -23,19 +24,20 @@ router.use(apiLimiter);
 // Public routes
 router.use('/auth', authRoutes);
 router.use('/admin', adminRoutes); // Public admin routes for admin panel
+router.use('/workers', workerRoutes); // Worker routes (includes public OTP endpoints)
+router.use('/pricing', pricingRoutes); // Public pricing routes
+router.use('/notifications', notificationRoutes); // Public notification routes
+router.use('/cms', cmsRoutes); // Public CMS routes
+router.use('/firebase', firebaseRoutes); // Firebase push notification routes
 
 // Protected routes (require authentication)
 router.use('/dashboard', dashboardRoutes);
 router.use('/users', userRoutes);
-router.use('/workers', workerRoutes);
 router.use('/categories', categoryRoutes);
-router.use('/pricing', pricingRoutes);
 router.use('/featured', featuredRoutes);
 router.use('/transactions', transactionRoutes);
 router.use('/complaints', complaintRoutes);
 router.use('/analytics', analyticsRoutes);
-router.use('/notifications', notificationRoutes);
-router.use('/cms', cmsRoutes);
 router.use('/reviews', reviewRoutes);
 
 export default router;
