@@ -354,6 +354,7 @@ router.post('/notifications', async (req, res) => {
   try {
     console.log('🔔 Admin: Creating notification');
     const Notification = (await import('../models/Notification.js')).default;
+    const { sendNotificationByAudience } = await import('../services/notification.service.js');
     
     const {
       title,
@@ -390,8 +391,7 @@ router.post('/notifications', async (req, res) => {
       bannerPosition,
       bannerLink,
       scheduledAt,
-      status: scheduledAt ? 'Scheduled' : 'Sent',
-      sentAt: scheduledAt ? null : new Date(),
+      status: scheduledAt ? 'Scheduled' : 'Draft',
       createdBy: req.body.adminId || '000000000000000000000000' // Default admin ID
     });
     
@@ -399,13 +399,31 @@ router.post('/notifications', async (req, res) => {
     
     // If not scheduled, send immediately
     if (!scheduledAt) {
-      // TODO: Implement push notification sending via FCM
-      console.log('📤 Sending push notification...');
+      try {
+        console.log('📤 Sending push notification immediately...');
+        const sendResult = await sendNotificationByAudience(notification._id);
+        console.log(`✅ Notification sent to ${sendResult.sent} workers`);
+        
+        return res.status(201).json({
+          success: true,
+          message: `Notification sent successfully to ${sendResult.sent} workers`,
+          data: notification,
+          sendResult
+        });
+      } catch (sendError) {
+        console.error('❌ Failed to send notification:', sendError);
+        return res.status(201).json({
+          success: true,
+          message: 'Notification created but failed to send',
+          data: notification,
+          error: sendError.message
+        });
+      }
     }
     
     res.status(201).json({
       success: true,
-      message: 'Notification created successfully',
+      message: 'Notification scheduled successfully',
       data: notification
     });
   } catch (error) {
@@ -588,6 +606,37 @@ router.get('/notifications/stats/summary', async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Failed to fetch notification stats',
+      error: error.message
+    });
+  }
+});
+
+// Send test notification to a worker
+router.post('/notifications/test/:workerId', async (req, res) => {
+  try {
+    console.log('🧪 Admin: Sending test notification to worker:', req.params.workerId);
+    const { sendTestNotification } = await import('../services/notification.service.js');
+    
+    const result = await sendTestNotification(req.params.workerId);
+    
+    if (result.success) {
+      res.status(200).json({
+        success: true,
+        message: 'Test notification sent successfully',
+        messageId: result.messageId
+      });
+    } else {
+      res.status(400).json({
+        success: false,
+        message: 'Failed to send test notification',
+        reason: result.reason
+      });
+    }
+  } catch (error) {
+    console.error('❌ Send test notification error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to send test notification',
       error: error.message
     });
   }

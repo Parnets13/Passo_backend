@@ -68,8 +68,16 @@ export const sendPushNotification = async (fcmToken, notification, data = {}) =>
 
 export const sendNotificationToDevice = async (fcmToken, notification, data = {}) => {
   try {
+    console.log('📤 Preparing to send notification...');
+    console.log('   Token preview:', fcmToken.substring(0, 30) + '...');
+    console.log('   Title:', notification.title);
+    console.log('   Body:', notification.body);
+    
     const message = {
       token: fcmToken,
+      // CRITICAL: Both notification and data payloads are required
+      // notification: Shows notification when app is in background/terminated
+      // data: Allows custom handling when app is in foreground
       notification: {
         title: notification.title,
         body: notification.body,
@@ -77,22 +85,47 @@ export const sendNotificationToDevice = async (fcmToken, notification, data = {}
       },
       data: {
         ...data,
+        // Convert all data values to strings (FCM requirement)
+        title: notification.title,
+        body: notification.body,
         timestamp: new Date().toISOString()
       },
       android: {
         priority: 'high',
         notification: {
           sound: 'default',
-          channelId: 'paaso_default_channel'
+          channelId: 'paaso_default_channel',
+          priority: 'high',
+          defaultSound: true,
+          defaultVibrateTimings: true
+        }
+      },
+      apns: {
+        payload: {
+          aps: {
+            sound: 'default',
+            badge: 1
+          }
         }
       }
     };
 
+    // Convert all data values to strings
+    Object.keys(message.data).forEach(key => {
+      if (typeof message.data[key] !== 'string') {
+        message.data[key] = String(message.data[key]);
+      }
+    });
+
+    console.log('📨 Sending message via Firebase Admin SDK...');
     const response = await admin.messaging().send(message);
-    console.log('✅ Notification sent successfully:', response);
+    console.log('✅ Notification sent successfully');
+    console.log('   Message ID:', response);
     return { success: true, messageId: response };
   } catch (error) {
     console.error('❌ Failed to send notification:', error);
+    console.error('   Error code:', error.code);
+    console.error('   Error message:', error.message);
     throw error;
   }
 };

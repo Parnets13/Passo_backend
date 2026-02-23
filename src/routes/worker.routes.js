@@ -438,7 +438,8 @@ router.put('/me/status', protect, async (req, res) => {
     if (availability) {
       worker.availability = availability;
       // Also update online status based on availability
-      worker.online = availability === 'online';
+      // online: true for 'online' and 'busy', false only for 'offline'
+      worker.online = availability === 'online' || availability === 'busy';
     }
     
     worker.lastSeen = new Date();
@@ -726,6 +727,117 @@ router.put('/:workerId/notifications/:notificationId/read', async (req, res) => 
     res.status(500).json({
       success: false,
       message: 'Failed to mark notification as read',
+      error: error.message
+    });
+  }
+});
+
+// ============================================
+// VERIFICATION ROUTES
+// ============================================
+
+// Get worker verification status
+router.get('/:workerId/verification-status', async (req, res) => {
+  try {
+    const { workerId } = req.params;
+    console.log('🛡️ Fetching verification status for worker:', workerId);
+    
+    const Worker = (await import('../models/Worker.js')).default;
+    const worker = await Worker.findById(workerId).select(
+      'verified kycVerified badges status aadhaarDoc panCard drivingLicense gstCertificate electricityBill'
+    );
+    
+    if (!worker) {
+      return res.status(404).json({
+        success: false,
+        message: 'Worker not found'
+      });
+    }
+    
+    // Calculate verification progress
+    const documents = {
+      aadhaar: !!worker.aadhaarDoc,
+      pan: !!worker.panCard,
+      drivingLicense: !!worker.drivingLicense,
+      gst: !!worker.gstCertificate,
+      electricityBill: !!worker.electricityBill
+    };
+    
+    const totalDocs = Object.keys(documents).length;
+    const uploadedDocs = Object.values(documents).filter(Boolean).length;
+    const progress = Math.round((uploadedDocs / totalDocs) * 100);
+    
+    res.status(200).json({
+      success: true,
+      status: {
+        verified: worker.verified,
+        kycVerified: worker.kycVerified,
+        badges: worker.badges || [],
+        status: worker.status,
+        documents,
+        progress,
+        uploadedDocs,
+        totalDocs
+      }
+    });
+  } catch (error) {
+    console.error('❌ Get verification status error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch verification status',
+      error: error.message
+    });
+  }
+});
+
+// Submit KYC documents
+router.post('/:workerId/kyc/submit', async (req, res) => {
+  try {
+    const { workerId } = req.params;
+    const documents = req.body;
+    
+    console.log('📋 Submitting KYC documents for worker:', workerId);
+    
+    const Worker = (await import('../models/Worker.js')).default;
+    const worker = await Worker.findById(workerId);
+    
+    if (!worker) {
+      return res.status(404).json({
+        success: false,
+        message: 'Worker not found'
+      });
+    }
+    
+    // Update document fields
+    if (documents.aadhaarDoc) worker.aadhaarDoc = documents.aadhaarDoc;
+    if (documents.panCard) worker.panCard = documents.panCard;
+    if (documents.drivingLicense) worker.drivingLicense = documents.drivingLicense;
+    if (documents.gstCertificate) worker.gstCertificate = documents.gstCertificate;
+    if (documents.electricityBill) worker.electricityBill = documents.electricityBill;
+    
+    // Update status to pending if not already approved
+    if (worker.status === 'Pending' || !worker.kycVerified) {
+      worker.status = 'Pending';
+    }
+    
+    await worker.save();
+    
+    console.log('✅ KYC documents submitted successfully');
+    
+    res.status(200).json({
+      success: true,
+      message: 'KYC documents submitted successfully. Our team will review them shortly.',
+      worker: {
+        verified: worker.verified,
+        kycVerified: worker.kycVerified,
+        status: worker.status
+      }
+    });
+  } catch (error) {
+    console.error('❌ Submit KYC documents error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to submit KYC documents',
       error: error.message
     });
   }
