@@ -147,37 +147,46 @@ export const sendNotificationByAudience = async (notificationId) => {
     // Determine target workers based on audience
     switch (notification.targetAudience) {
       case 'All':
-        // Get all workers with FCM tokens
+        // Get all workers with FCM tokens (not blocked)
         const allWorkers = await Worker.find({
           fcmToken: { $ne: null, $exists: true },
-          status: 'Approved'
+          status: { $ne: 'Blocked' }
         }).select('_id');
         workerIds = allWorkers.map(w => w._id);
         break;
         
       case 'City':
-        // Get workers in specific cities
+        // Get workers in specific cities (not blocked)
         const cityWorkers = await Worker.find({
           city: { $in: notification.cities },
           fcmToken: { $ne: null, $exists: true },
-          status: 'Approved'
+          status: { $ne: 'Blocked' }
         }).select('_id');
         workerIds = cityWorkers.map(w => w._id);
         break;
         
       case 'Category':
-        // Get workers in specific categories
+        // Get workers in specific categories (not blocked)
         const categoryWorkers = await Worker.find({
           category: { $in: notification.categories },
           fcmToken: { $ne: null, $exists: true },
-          status: 'Approved'
+          status: { $ne: 'Blocked' }
         }).select('_id');
         workerIds = categoryWorkers.map(w => w._id);
         break;
         
       case 'Custom':
-        // Use specific user IDs
-        workerIds = notification.userIds;
+        // Use specific user IDs - verify they have FCM tokens
+        console.log('   Custom user IDs:', notification.userIds);
+        const customWorkers = await Worker.find({
+          _id: { $in: notification.userIds },
+          fcmToken: { $ne: null, $exists: true }
+        }).select('_id fcmToken name');
+        console.log(`   Found ${customWorkers.length} workers with FCM tokens out of ${notification.userIds.length} requested`);
+        customWorkers.forEach(w => {
+          console.log(`      - ${w.name}: ${w.fcmToken ? 'Has token' : 'No token'}`);
+        });
+        workerIds = customWorkers.map(w => w._id);
         break;
         
       default:

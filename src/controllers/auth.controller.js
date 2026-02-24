@@ -287,6 +287,28 @@ export const registerWorker = async (req, res, next) => {
     console.log('   Name:', worker.name);
     console.log('   Mobile:', worker.mobile);
     console.log('   Status:', worker.status);
+    
+    // ✅ Register FCM token if provided
+    if (fcmToken) {
+      try {
+        console.log('📱 Registering FCM token during registration...');
+        const FCMToken = (await import('../models/FCMToken.js')).default;
+        
+        await FCMToken.create({
+          worker: worker._id,
+          token: fcmToken,
+          platform: req.body.platform || 'unknown',
+          deviceInfo: req.body.deviceInfo || {},
+          isActive: true
+        });
+        
+        console.log('✅ FCM token registered successfully');
+      } catch (fcmError) {
+        console.error('⚠️ FCM token registration failed:', fcmError.message);
+        // Don't fail registration if FCM token fails
+      }
+    }
+    
     console.log('🔵 ========================================\n');
 
     res.status(201).json({
@@ -359,7 +381,43 @@ export const workerLogin = async (req, res, next) => {
     worker.online = true;
     if (fcmToken) {
       worker.fcmToken = fcmToken;
+      worker.devicePlatform = req.body.platform || 'unknown';
+      worker.lastTokenUpdate = new Date();
       console.log('✅ FCM token updated for worker:', worker.name);
+      
+      // ✅ Register FCM token in FCMToken collection
+      try {
+        const FCMToken = (await import('../models/FCMToken.js')).default;
+        
+        // Check if token already exists
+        let tokenDoc = await FCMToken.findOne({ worker: worker._id, token: fcmToken });
+        
+        if (tokenDoc) {
+          // Update existing token
+          tokenDoc.platform = req.body.platform || tokenDoc.platform;
+          tokenDoc.isActive = true;
+          tokenDoc.lastUsed = new Date();
+          tokenDoc.failureCount = 0;
+          await tokenDoc.save();
+        } else {
+          // Deactivate old tokens
+          await FCMToken.updateMany({ worker: worker._id }, { isActive: false });
+          
+          // Create new token
+          await FCMToken.create({
+            worker: worker._id,
+            token: fcmToken,
+            platform: req.body.platform || 'unknown',
+            deviceInfo: req.body.deviceInfo || {},
+            isActive: true
+          });
+        }
+        
+        console.log('✅ FCM token registered in FCMToken collection');
+      } catch (fcmError) {
+        console.error('⚠️ FCM token registration failed:', fcmError.message);
+       
+      }
     }
     await worker.save();
 

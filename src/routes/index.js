@@ -14,6 +14,7 @@ import cmsRoutes from './cms.routes.js';
 import reviewRoutes from './review.routes.js';
 import adminRoutes from './admin.routes.js';
 import firebaseRoutes from './firebase.routes.js';
+import fcmRoutes from './fcm.routes.js';
 import { apiLimiter } from '../middleware/rateLimiter.js';
 
 const router = express.Router();
@@ -29,6 +30,7 @@ router.use('/pricing', pricingRoutes); // Public pricing routes
 router.use('/notifications', notificationRoutes); // Public notification routes
 router.use('/cms', cmsRoutes); // Public CMS routes
 router.use('/firebase', firebaseRoutes); // Firebase push notification routes
+router.use('/fcm', fcmRoutes); // FCM token management routes
 
 // Protected routes (require authentication)
 router.use('/dashboard', dashboardRoutes);

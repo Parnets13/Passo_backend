@@ -139,6 +139,8 @@ export const sendMulticastNotification = async (fcmTokens, notification, data = 
 
 export const sendNotificationToMultipleDevices = async (fcmTokens, notification, data = {}) => {
   try {
+    console.log(`📤 Sending push notification to ${fcmTokens.length} workers`);
+    
     const message = {
       tokens: fcmTokens,
       notification: {
@@ -148,17 +150,39 @@ export const sendNotificationToMultipleDevices = async (fcmTokens, notification,
       },
       data: {
         ...data,
+        // Add title and body to data payload for foreground handling
+        title: notification.title,
+        body: notification.body,
         timestamp: new Date().toISOString()
       },
       android: {
         priority: 'high',
         notification: {
           sound: 'default',
-          channelId: 'paaso_default_channel'
+          channelId: 'paaso_default_channel',
+          priority: 'high',
+          defaultSound: true,
+          defaultVibrateTimings: true
+        }
+      },
+      apns: {
+        payload: {
+          aps: {
+            sound: 'default',
+            badge: 1
+          }
         }
       }
     };
 
+    // CRITICAL: Convert all data values to strings (FCM requirement)
+    Object.keys(message.data).forEach(key => {
+      if (typeof message.data[key] !== 'string') {
+        message.data[key] = String(message.data[key]);
+      }
+    });
+
+    console.log('📨 Sending multicast message via Firebase Admin SDK...');
     const response = await admin.messaging().sendEachForMulticast(message);
     console.log(`✅ Notifications sent: ${response.successCount}/${fcmTokens.length}`);
     
@@ -201,16 +225,36 @@ export const sendNotificationToTopic = async (topic, notification, data = {}) =>
       },
       data: {
         ...data,
+        title: notification.title,
+        body: notification.body,
         timestamp: new Date().toISOString()
       },
       android: {
         priority: 'high',
         notification: {
           sound: 'default',
-          channelId: 'paaso_default_channel'
+          channelId: 'paaso_default_channel',
+          priority: 'high',
+          defaultSound: true,
+          defaultVibrateTimings: true
+        }
+      },
+      apns: {
+        payload: {
+          aps: {
+            sound: 'default',
+            badge: 1
+          }
         }
       }
     };
+
+    // Convert all data values to strings (FCM requirement)
+    Object.keys(message.data).forEach(key => {
+      if (typeof message.data[key] !== 'string') {
+        message.data[key] = String(message.data[key]);
+      }
+    });
 
     const response = await admin.messaging().send(message);
     console.log('✅ Topic notification sent successfully:', response);

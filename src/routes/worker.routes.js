@@ -82,7 +82,7 @@ router.post('/send-otp', async (req, res) => {
 router.post('/verify-otp', async (req, res) => {
   try {
     console.log('🔐 Verify OTP request received');
-    const { mobile, otp } = req.body;
+    const { mobile, otp, fcmToken, platform, deviceInfo } = req.body;
     
     if (!mobile || !otp) {
       console.log('❌ Mobile or OTP missing');
@@ -148,6 +148,48 @@ router.post('/verify-otp', async (req, res) => {
     if (worker) {
       token = worker.generateAuthToken();
       console.log('🔑 JWT token generated for worker:', worker._id);
+      
+      // ✅ Register FCM token if provided
+      if (fcmToken) {
+        try {
+          console.log('📱 Registering FCM token after OTP verification...');
+          
+          // Update worker's FCM token
+          worker.fcmToken = fcmToken;
+          worker.devicePlatform = platform || 'unknown';
+          worker.lastTokenUpdate = new Date();
+          worker.online = true;
+          worker.lastSeen = new Date();
+          await worker.save();
+          
+          // Register in FCMToken collection
+          const FCMToken = (await import('../models/FCMToken.js')).default;
+          
+          let tokenDoc = await FCMToken.findOne({ worker: worker._id, token: fcmToken });
+          
+          if (tokenDoc) {
+            tokenDoc.platform = platform || tokenDoc.platform;
+            tokenDoc.deviceInfo = deviceInfo || tokenDoc.deviceInfo;
+            tokenDoc.isActive = true;
+            tokenDoc.lastUsed = new Date();
+            tokenDoc.failureCount = 0;
+            await tokenDoc.save();
+          } else {
+            await FCMToken.updateMany({ worker: worker._id }, { isActive: false });
+            await FCMToken.create({
+              worker: worker._id,
+              token: fcmToken,
+              platform: platform || 'unknown',
+              deviceInfo: deviceInfo || {},
+              isActive: true
+            });
+          }
+          
+          console.log('✅ FCM token registered successfully');
+        } catch (fcmError) {
+          console.error('⚠️ FCM token registration failed:', fcmError.message);
+        }
+      }
     }
     
     res.status(200).json({
@@ -727,6 +769,92 @@ router.put('/:workerId/notifications/:notificationId/read', async (req, res) => 
     res.status(500).json({
       success: false,
       message: 'Failed to mark notification as read',
+      error: error.message
+    });
+  }
+});
+
+// ============================================
+// DATA MANAGEMENT ROUTES
+// ============================================
+
+// Download worker data (GDPR compliance)
+router.get('/me/download-data', protect, async (req, res) => {
+  try {
+    const workerId = req.admin.id || req.user?.id;
+    console.log('📥 Downloading data for worker:', workerId);
+    
+    const Worker = (await import('../models/Worker.js')).default;
+    const worker = await Worker.findById(workerId).select('-password');
+    
+    if (!worker) {
+      return res.status(404).json({
+        success: false,
+        message: 'Worker not found'
+      });
+    }
+    
+    // Prepare comprehensive data export
+    const dataExport = {
+      exportDate: new Date().toISOString(),
+      exportedBy: 'PaasoWork Backend',
+      personalInfo: {
+        name: worker.name,
+        email: worker.email,
+        mobile: worker.mobile,
+        workerType: worker.workerType,
+        profilePhoto: worker.profilePhoto
+      },
+      professionalInfo: {
+        category: worker.category,
+        serviceArea: worker.serviceArea,
+        city: worker.city,
+        pincode: worker.pincode,
+        languages: worker.languages,
+        teamSize: worker.teamSize
+      },
+      documents: {
+        aadhaarDoc: worker.aadhaarDoc,
+        panCard: worker.panCard,
+        electricityBill: worker.electricityBill,
+        gstCertificate: worker.gstCertificate,
+        gstNumber: worker.gstNumber,
+        msmeCertificate: worker.msmeCertificate,
+        msmeNumber: worker.msmeNumber
+      },
+      accountInfo: {
+        status: worker.status,
+        verified: worker.verified,
+        kycVerified: worker.kycVerified,
+        badges: worker.badges,
+        featured: worker.featured,
+        online: worker.online,
+        availability: worker.availability,
+        registeredDate: worker.createdAt,
+        lastUpdated: worker.updatedAt
+      },
+      stats: {
+        totalUnlocks: worker.totalUnlocks,
+        rating: worker.rating,
+        totalReviews: worker.totalReviews
+      },
+      subscription: worker.subscription,
+      notificationPreferences: worker.notificationPreferences,
+      privacySettings: worker.privacySettings
+    };
+    
+    console.log('✅ Data export prepared successfully');
+    
+    res.json({
+      success: true,
+      message: 'Data export ready',
+      data: dataExport
+    });
+  } catch (error) {
+    console.error('❌ Download data error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to export data',
       error: error.message
     });
   }
