@@ -2,7 +2,7 @@ import Category from '../models/Category.js';
 
 // @desc    Get all categories
 // @route   GET /api/categories
-// @access  Private
+// @access  Public
 export const getCategories = async (req, res, next) => {
   try {
     const { active } = req.query;
@@ -25,7 +25,7 @@ export const getCategories = async (req, res, next) => {
 
 // @desc    Get category by ID
 // @route   GET /api/categories/:id
-// @access  Private
+// @access  Public
 export const getCategoryById = async (req, res, next) => {
   try {
     const category = await Category.findById(req.params.id);

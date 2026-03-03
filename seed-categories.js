@@ -1,30 +1,18 @@
 import mongoose from 'mongoose';
 import dotenv from 'dotenv';
-import Admin from '../models/Admin.js';
-import Category from '../models/Category.js';
+import Category from './src/models/Category.js';
 
 dotenv.config();
 
-const seedData = async () => {
+const seedCategories = async () => {
   try {
     // Connect to MongoDB
     await mongoose.connect(process.env.MONGODB_URI);
     console.log('✅ MongoDB Connected');
 
-    // Clear existing data
-    await Admin.deleteMany({});
+    // Clear existing categories
     await Category.deleteMany({});
-    console.log('🗑️  Cleared existing data');
-
-    // Create default admin
-    const admin = await Admin.create({
-      name: 'Admin User',
-      email: 'admin@admin.com',
-      password: 'admin123',
-      role: 'super-admin',
-      status: 'Active'
-    });
-    console.log('✅ Created default admin:', admin.email);
+    console.log('🗑️  Cleared existing categories');
 
     // Create comprehensive categories
     const categories = await Category.insertMany([
@@ -141,19 +129,15 @@ const seedData = async () => {
       { name: 'Handyman', active: true, description: 'General handyman services', workerTypes: ['Worker', 'Service Provider'] },
       { name: 'Furniture Assembly', active: true, description: 'Furniture assembly', workerTypes: ['Worker', 'Service Provider'] },
     ]);
+    
     console.log(`✅ Created ${categories.length} categories`);
-
-    console.log('\n🎉 Seed data created successfully!');
-    console.log('\n📝 Default Admin Credentials:');
-    console.log('   Email: admin@admin.com');
-    console.log('   Password: admin123');
-    console.log('\n⚠️  Please change the default password after first login!\n');
+    console.log('\n🎉 Categories seeded successfully!\n');
 
     process.exit(0);
   } catch (error) {
-    console.error('❌ Error seeding data:', error);
+    console.error('❌ Error seeding categories:', error);
     process.exit(1);
   }
 };
 
-seedData();
+seedCategories();
