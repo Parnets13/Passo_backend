@@ -60,7 +60,39 @@ router.post('/send-otp', async (req, res) => {
 
     console.log('✅ OTP generated for', mobile, ':', otp);
     console.log('⏰ OTP expires at:', new Date(expiryTime).toLocaleTimeString());
-    console.log('📱 OTP will be displayed on screen (no SMS)');
+    
+    // ✅ Send OTP notification if worker exists and has FCM token
+    try {
+      const Worker = (await import('../models/Worker.js')).default;
+      const worker = await Worker.findOne({ mobile });
+      
+      if (worker && worker.fcmToken) {
+        console.log('📤 Sending OTP notification to worker:', worker.name);
+        
+        const { sendPushNotification } = await import('../config/firebase.js');
+        
+        await sendPushNotification(
+          worker.fcmToken,
+          {
+            title: 'PaasoWork - आपका OTP',
+            body: `आपका OTP है: ${otp}\nयह 5 मिनट में expire हो जाएगा।`
+          },
+          {
+            type: 'otp',
+            otp: otp,
+            mobile: mobile,
+            expiresIn: '300'
+          }
+        );
+        
+        console.log('✅ OTP notification sent successfully');
+      } else {
+        console.log('💡 Worker not found or no FCM token - OTP will be shown on screen only');
+      }
+    } catch (notifError) {
+      console.error('⚠️ Failed to send OTP notification:', notifError.message);
+      // Don't fail the request if notification fails
+    }
 
     // Return response with OTP (no SMS sending)
     res.status(200).json({
@@ -231,6 +263,51 @@ router.post('/verify-otp', async (req, res) => {
 
 // Public workers list
 router.get('/public', getWorkers);
+
+// Get worker by phone number - PUBLIC ROUTE for testing
+router.get('/by-phone/:phoneNumber', async (req, res) => {
+  try {
+    const { phoneNumber } = req.params;
+    console.log('📞 Looking up worker by phone:', phoneNumber);
+    
+    const Worker = (await import('../models/Worker.js')).default;
+    
+    // Try to find by mobile field (without +91 prefix)
+    let worker = await Worker.findOne({ mobile: phoneNumber.replace('+91', '') }).select('-password');
+    
+    // If not found, try with full phone number
+    if (!worker) {
+      worker = await Worker.findOne({ phoneNumber: phoneNumber }).select('-password');
+    }
+    
+    if (!worker) {
+      console.log('❌ Worker not found for phone:', phoneNumber);
+      return res.status(404).json({
+        success: false,
+        message: 'Worker not found with this phone number'
+      });
+    }
+    
+    console.log('✅ Worker found:', worker.name);
+    
+    res.status(200).json({
+      success: true,
+      _id: worker._id,
+      name: worker.name,
+      phoneNumber: worker.mobile,
+      fcmToken: worker.fcmToken,
+      devicePlatform: worker.devicePlatform,
+      online: worker.online,
+      status: worker.status
+    });
+  } catch (error) {
+    console.error('❌ Get worker by phone error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error'
+    });
+  }
+});
 
 // Check mobile - PUBLIC ROUTE for OTP verification
 router.post('/check-mobile', async (req, res) => {
@@ -539,11 +616,32 @@ router.get('/me/stats', protect, async (req, res) => {
   }
 });
 
-// Notification preferences routes
-router.get('/me/notification-preferences', protect, async (req, res) => {
+// Notification preferences routes (PUBLIC - no auth required for now)
+router.get('/me/notification-preferences', async (req, res) => {
   try {
+    console.log('🔔 Get notification preferences request');
+    
+    // Try to get worker ID from query params or body
+    const workerId = req.query.workerId || req.body.workerId;
+    
+    if (!workerId) {
+      // Return default preferences if no worker ID
+      return res.status(200).json({
+        success: true,
+        preferences: {
+          pushEnabled: true,
+          jobAlerts: true,
+          messageAlerts: true,
+          paymentAlerts: true,
+          promotions: false,
+          emailNotifications: true,
+          smsNotifications: false
+        }
+      });
+    }
+    
     const Worker = (await import('../models/Worker.js')).default;
-    const worker = await Worker.findById(req.admin.id || req.user?.id).select('notificationPreferences');
+    const worker = await Worker.findById(workerId).select('notificationPreferences');
     
     if (!worker) {
       return res.status(404).json({
@@ -554,9 +652,18 @@ router.get('/me/notification-preferences', protect, async (req, res) => {
 
     res.status(200).json({
       success: true,
-      preferences: worker.notificationPreferences || {}
+      preferences: worker.notificationPreferences || {
+        pushEnabled: true,
+        jobAlerts: true,
+        messageAlerts: true,
+        paymentAlerts: true,
+        promotions: false,
+        emailNotifications: true,
+        smsNotifications: false
+      }
     });
   } catch (error) {
+    console.error('❌ Get preferences error:', error);
     res.status(500).json({
       success: false,
       message: 'Server error'
@@ -564,10 +671,22 @@ router.get('/me/notification-preferences', protect, async (req, res) => {
   }
 });
 
-router.put('/me/notification-preferences', protect, async (req, res) => {
+router.put('/me/notification-preferences', async (req, res) => {
   try {
+    console.log('🔔 Update notification preferences request');
+    
+    // Try to get worker ID from query params or body
+    const workerId = req.query.workerId || req.body.workerId;
+    
+    if (!workerId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Worker ID is required'
+      });
+    }
+    
     const Worker = (await import('../models/Worker.js')).default;
-    const worker = await Worker.findById(req.admin.id || req.user?.id);
+    const worker = await Worker.findById(workerId);
     
     if (!worker) {
       return res.status(404).json({
@@ -576,11 +695,16 @@ router.put('/me/notification-preferences', protect, async (req, res) => {
       });
     }
 
+    // Remove workerId from body before saving
+    const { workerId: _, ...preferences } = req.body;
+    
     worker.notificationPreferences = {
       ...worker.notificationPreferences,
-      ...req.body
+      ...preferences
     };
     await worker.save();
+
+    console.log('✅ Preferences updated successfully');
 
     res.status(200).json({
       success: true,
@@ -588,6 +712,7 @@ router.put('/me/notification-preferences', protect, async (req, res) => {
       preferences: worker.notificationPreferences
     });
   } catch (error) {
+    console.error('❌ Update preferences error:', error);
     res.status(500).json({
       success: false,
       message: 'Server error'
@@ -679,7 +804,14 @@ router.get('/dashboard', protect, async (req, res) => {
           featured: worker.featured,
           online: worker.online,
           availability: worker.availability,
-          subscription: worker.subscription
+          subscription: worker.subscription,
+          profilePhoto: worker.profilePhoto, // ✅ Include profile photo in dashboard response
+          workerType: worker.workerType,
+          category: worker.category,
+          serviceArea: worker.serviceArea,
+          city: worker.city,
+          languages: worker.languages,
+          kycVerified: worker.kycVerified
         },
         stats: {
           totalUnlocks: worker.totalUnlocks,

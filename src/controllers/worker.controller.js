@@ -1,4 +1,9 @@
 import Worker from '../models/Worker.js';
+import { 
+  sendApprovalNotification, 
+  sendRejectionNotification,
+  sendProfileUpdateNotification 
+} from '../utils/notificationHelper.js';
 
 // @desc    Get all workers with filters
 // @route   GET /api/workers
@@ -98,6 +103,14 @@ export const approveWorker = async (req, res, next) => {
     
     await worker.save();
 
+    // ✅ Send approval notification
+    try {
+      await sendApprovalNotification(worker._id);
+      console.log('✅ Approval notification sent to worker');
+    } catch (notifError) {
+      console.error('⚠️ Failed to send approval notification:', notifError.message);
+    }
+
     res.status(200).json({
       success: true,
       message: 'Worker approved successfully with Verified and Trusted badges',
@@ -126,6 +139,14 @@ export const rejectWorker = async (req, res, next) => {
     worker.status = 'Rejected';
     worker.rejectionReason = reason;
     await worker.save();
+
+    // ✅ Send rejection notification
+    try {
+      await sendRejectionNotification(worker._id, reason);
+      console.log('✅ Rejection notification sent to worker');
+    } catch (notifError) {
+      console.error('⚠️ Failed to send rejection notification:', notifError.message);
+    }
 
     res.status(200).json({
       success: true,
@@ -337,6 +358,14 @@ export const approveKYC = async (req, res, next) => {
     }
     
     await worker.save();
+
+    // ✅ Send KYC approval notification
+    try {
+      await sendProfileUpdateNotification(worker._id, 'kyc');
+      console.log('✅ KYC approval notification sent to worker');
+    } catch (notifError) {
+      console.error('⚠️ Failed to send KYC approval notification:', notifError.message);
+    }
 
     res.status(200).json({
       success: true,
