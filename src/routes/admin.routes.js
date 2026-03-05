@@ -479,6 +479,44 @@ router.get('/legacy-workers', async (req, res) => {
   }
 });
 
+// ============================================
+// DIRECT NOTIFICATION SENDING (FOR TESTING)
+// ============================================
+
+// Send notification directly using FCM token
+router.post('/send-notification', async (req, res) => {
+  try {
+    console.log('📤 Admin: Sending direct notification');
+    const { sendPushNotification } = await import('../config/firebase.js');
+    
+    const { fcmToken, notification, data } = req.body;
+    
+    if (!fcmToken || !notification) {
+      return res.status(400).json({
+        success: false,
+        message: 'fcmToken and notification are required'
+      });
+    }
+    
+    const result = await sendPushNotification(fcmToken, notification, data || {});
+    
+    console.log('✅ Notification sent successfully');
+    
+    res.status(200).json({
+      success: true,
+      message: 'Notification sent successfully',
+      messageId: result.messageId
+    });
+  } catch (error) {
+    console.error('❌ Send notification error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to send notification',
+      error: error.message
+    });
+  }
+});
+
 export default router;
 
 

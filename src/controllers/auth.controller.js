@@ -303,6 +303,28 @@ export const registerWorker = async (req, res, next) => {
         });
         
         console.log('✅ FCM token registered successfully');
+        
+        // ✅ Send welcome notification
+        try {
+          const { sendPushNotification } = await import('../config/firebase.js');
+          
+          await sendPushNotification(
+            fcmToken,
+            {
+              title: 'PaasoWork में आपका स्वागत है! 🎉',
+              body: `${worker.name}, आपका registration सफलतापूर्वक submit हो गया है। Admin approval के बाद आप काम शुरू कर सकते हैं।`
+            },
+            {
+              type: 'registration_success',
+              workerId: worker._id.toString(),
+              status: 'Pending'
+            }
+          );
+          
+          console.log('✅ Welcome notification sent');
+        } catch (notifError) {
+          console.error('⚠️ Welcome notification failed:', notifError.message);
+        }
       } catch (fcmError) {
         console.error('⚠️ FCM token registration failed:', fcmError.message);
         // Don't fail registration if FCM token fails
@@ -329,7 +351,8 @@ export const registerWorker = async (req, res, next) => {
         kycVerified: worker.kycVerified,
         availability: worker.availability,
         online: worker.online,
-        badges: worker.badges || []
+        badges: worker.badges || [],
+        profilePhoto: worker.profilePhoto // ✅ Include profile photo in response
       }
     });
   } catch (error) {
@@ -431,7 +454,16 @@ export const workerLogin = async (req, res, next) => {
         mobile: worker.mobile,
         category: worker.category,
         status: worker.status,
-        verified: worker.verified
+        verified: worker.verified,
+        profilePhoto: worker.profilePhoto, // ✅ Include profile photo in login response
+        workerType: worker.workerType,
+        serviceArea: worker.serviceArea,
+        city: worker.city,
+        languages: worker.languages,
+        availability: worker.availability,
+        online: worker.online,
+        badges: worker.badges || [],
+        kycVerified: worker.kycVerified
       }
     });
   } catch (error) {

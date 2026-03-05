@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import bcrypt from 'bcryptjs';
 
 const userSchema = new mongoose.Schema({
   name: {
@@ -24,6 +25,10 @@ const userSchema = new mongoose.Schema({
     minlength: 6,
     select: false
   },
+  deviceId: {
+    type: String,
+    sparse: true
+  },
   unlocks: {
     type: Number,
     default: 0
@@ -46,6 +51,8 @@ const userSchema = new mongoose.Schema({
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Worker'
     },
+    workerName: String,
+    workerMobile: String,
     category: String,
     amount: Number,
     date: {
@@ -67,7 +74,21 @@ const userSchema = new mongoose.Schema({
   timestamps: true
 });
 
-// Index for faster queries
+// Hash password before saving
+userSchema.pre('save', async function(next) {
+  if (!this.isModified('password')) {
+    next();
+  }
+  const salt = await bcrypt.genSalt(10);
+  this.password = await bcrypt.hash(this.password, salt);
+});
+
+// Compare password method
+userSchema.methods.comparePassword = async function(enteredPassword) {
+  return await bcrypt.compare(enteredPassword, this.password);
+};
+
+// Index for faster queries (removed duplicates)
 userSchema.index({ status: 1 });
 
 export default mongoose.model('User', userSchema);

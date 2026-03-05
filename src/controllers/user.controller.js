@@ -200,7 +200,7 @@ export const getUserHistory = async (req, res, next) => {
 // @access  Public (called from app after payment)
 export const recordUnlock = async (req, res, next) => {
   try {
-    const { workerId, workerName, workerMobile, category, amount } = req.body;
+    const { workerId, workerName, workerMobile, category, amount, date } = req.body;
     
     const user = await User.findById(req.params.id);
 
@@ -235,7 +235,7 @@ export const recordUnlock = async (req, res, next) => {
       workerMobile,
       category,
       amount,
-      date: new Date()
+      date: date ? new Date(date) : new Date()
     });
 
     // Update stats
@@ -244,7 +244,7 @@ export const recordUnlock = async (req, res, next) => {
 
     await user.save();
 
-    console.log('✅ Unlock recorded for user:', user._id);
+    console.log('✅ Unlock recorded for user:', user._id, '- Data saved to User Management');
 
     res.status(200).json({
       success: true,
@@ -257,6 +257,65 @@ export const recordUnlock = async (req, res, next) => {
     });
   } catch (error) {
     console.error('❌ Record unlock error:', error);
+    next(error);
+  }
+};
+
+// @desc    Create anonymous user (for app users without registration)
+// @route   POST /api/users/create-anonymous
+// @access  Public
+export const createAnonymousUser = async (req, res, next) => {
+  try {
+    const { name, mobile, password, deviceId } = req.body;
+
+    // Check if user already exists with this mobile or deviceId
+    const existingUser = await User.findOne({ 
+      $or: [{ mobile }, { deviceId }] 
+    });
+
+    if (existingUser) {
+      console.log('✅ Existing user found:', existingUser._id);
+      return res.status(200).json({
+        success: true,
+        message: 'User already exists',
+        user: {
+          _id: existingUser._id,
+          name: existingUser.name,
+          mobile: existingUser.mobile,
+          status: existingUser.status,
+          unlocks: existingUser.unlocks,
+          totalSpent: existingUser.totalSpent,
+          freeCredits: existingUser.freeCredits
+        }
+      });
+    }
+
+    // Create new anonymous user
+    const user = await User.create({
+      name,
+      mobile,
+      password,
+      deviceId,
+      status: 'Active'
+    });
+
+    console.log('✅ Anonymous user created:', user._id);
+
+    res.status(201).json({
+      success: true,
+      message: 'User created successfully',
+      user: {
+        _id: user._id,
+        name: user.name,
+        mobile: user.mobile,
+        status: user.status,
+        unlocks: user.unlocks,
+        totalSpent: user.totalSpent,
+        freeCredits: user.freeCredits
+      }
+    });
+  } catch (error) {
+    console.error('❌ Create anonymous user error:', error);
     next(error);
   }
 };

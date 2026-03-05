@@ -7,14 +7,16 @@ import {
   unblockUser,
   issueCredits,
   getUserHistory,
-  recordUnlock
+  recordUnlock,
+  createAnonymousUser
 } from '../controllers/user.controller.js';
 import { protect } from '../middleware/auth.js';
 import { validate } from '../middleware/validate.js';
 
 const router = express.Router();
 
-// Public route - Record unlock after payment (no auth required)
+// Public routes - No auth required
+router.post('/create-anonymous', createAnonymousUser);
 router.post('/:id/unlock', recordUnlock);
 
 // All other routes require authentication

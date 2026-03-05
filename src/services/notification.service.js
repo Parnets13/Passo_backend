@@ -1,127 +1,142 @@
 import { sendNotificationToDevice, sendNotificationToMultipleDevices } from '../config/firebase.js';
+import FCMToken from '../models/FCMToken.js';
 import Worker from '../models/Worker.js';
-import Notification from '../models/Notification.js';
 
 /**
- * Send push notification to a single worker
+ * Send notification to a single worker by ID
  */
-export const sendPushToWorker = async (workerId, notification, data = {}) => {
+export const sendNotificationToWorker = async (workerId, notification, data = {}) => {
   try {
-    console.log('📤 Sending push notification to worker:', workerId);
+    console.log('📤 Sending notification to worker:', workerId);
+    console.log('   Title:', notification.title);
+    console.log('   Body:', notification.body);
     
-    // Get worker's FCM token
-    const worker = await Worker.findById(workerId).select('fcmToken name');
+    // Get worker's active FCM tokens
+    const tokens = await FCMToken.find({
+      worker: workerId,
+      isActive: true
+    });
     
-    if (!worker) {
-      throw new Error('Worker not found');
+    if (tokens.length === 0) {
+      console.log('⚠️ No active FCM tokens found for worker');
+      return {
+        success: false,
+        reason: 'No active FCM tokens'
+      };
     }
     
-    if (!worker.fcmToken) {
-      console.warn('⚠️ Worker has no FCM token registered');
-      return { success: false, reason: 'no_token' };
-    }
+    console.log(`📱 Found ${tokens.length} active token(s)`);
     
-    console.log('   Worker:', worker.name);
-    console.log('   Token preview:', worker.fcmToken.substring(0, 30) + '...');
-    
-    // Send notification
-    const result = await sendNotificationToDevice(
-      worker.fcmToken,
-      {
-        title: notification.title,
-        body: notification.body,
-        imageUrl: notification.imageUrl
-      },
-      {
-        ...data,
-        workerId: workerId.toString(),
-        timestamp: new Date().toISOString()
+    // Send to all active tokens
+    const results = [];
+    for (const tokenDoc of tokens) {
+      try {
+        const result = await sendNotificationToDevice(
+          tokenDoc.token,
+          notification,
+          data
+        );
+        
+        // Mark token as successful
+        await tokenDoc.markAsSuccessful();
+        
+        results.push({
+          success: true,
+          messageId: result.messageId
+        });
+        
+        console.log('✅ Notification sent successfully to token');
+      } catch (error) {
+        console.error('❌ Failed to send to token:', error.message);
+        
+        // Mark token as failed
+        await tokenDoc.markAsFailed();
+        
+        results.push({
+          success: false,
+          error: error.message
+        });
       }
-    );
+    }
     
-    console.log('✅ Push notification sent successfully');
-    return { success: true, messageId: result.messageId };
+    // Return success if at least one notification was sent
+    const successCount = results.filter(r => r.success).length;
+    
+    return {
+      success: successCount > 0,
+      sent: successCount,
+      failed: results.length - successCount,
+      results
+    };
     
   } catch (error) {
-    console.error('❌ Failed to send push notification:', error);
-    
-    // Handle invalid token errors
-    if (error.code === 'messaging/invalid-registration-token' || 
-        error.code === 'messaging/registration-token-not-registered') {
-      console.log('🗑️ Removing invalid FCM token from worker');
-      await Worker.findByIdAndUpdate(workerId, { 
-        fcmToken: null,
-        lastTokenUpdate: null 
-      });
-    }
-    
+    console.error('❌ Send notification to worker error:', error);
     throw error;
   }
 };
 
 /**
- * Send push notification to multiple workers
+ * Send notification to multiple workers
  */
-export const sendPushToMultipleWorkers = async (workerIds, notification, data = {}) => {
+export const sendNotificationToWorkers = async (workerIds, notification, data = {}) => {
   try {
-    console.log(`📤 Sending push notification to ${workerIds.length} workers`);
+    console.log(`📤 Sending notification to ${workerIds.length} workers`);
+    console.log('   Title:', notification.title);
+    console.log('   Body:', notification.body);
     
-    // Get workers' FCM tokens
-    const workers = await Worker.find({
-      _id: { $in: workerIds },
-      fcmToken: { $ne: null, $exists: true }
-    }).select('fcmToken name');
+    // Get all active FCM tokens for these workers
+    const tokens = await FCMToken.find({
+      worker: { $in: workerIds },
+      isActive: true
+    });
     
-    if (workers.length === 0) {
-      console.warn('⚠️ No workers with FCM tokens found');
-      return { success: false, reason: 'no_tokens' };
+    if (tokens.length === 0) {
+      console.log('⚠️ No active FCM tokens found');
+      return {
+        success: false,
+        sent: 0,
+        failed: 0,
+        reason: 'No active FCM tokens'
+      };
     }
     
-    console.log(`   Found ${workers.length} workers with FCM tokens`);
+    console.log(`📱 Found ${tokens.length} active token(s)`);
     
-    const fcmTokens = workers.map(w => w.fcmToken);
+    // Extract token strings
+    const fcmTokens = tokens.map(t => t.token);
     
-    // Send notification
+    // Send multicast notification
     const result = await sendNotificationToMultipleDevices(
       fcmTokens,
-      {
-        title: notification.title,
-        body: notification.body,
-        imageUrl: notification.imageUrl
-      },
-      {
-        ...data,
-        timestamp: new Date().toISOString()
-      }
+      notification,
+      data
     );
     
-    console.log(`✅ Push notifications sent: ${result.successCount}/${fcmTokens.length}`);
-    
-    // Handle failed tokens
-    if (result.failureCount > 0) {
-      console.log('🗑️ Cleaning up invalid tokens...');
-      result.responses.forEach(async (resp, idx) => {
-        if (!resp.success && 
-            (resp.error?.code === 'messaging/invalid-registration-token' ||
-             resp.error?.code === 'messaging/registration-token-not-registered')) {
-          const worker = workers[idx];
-          await Worker.findByIdAndUpdate(worker._id, { 
-            fcmToken: null,
-            lastTokenUpdate: null 
-          });
-          console.log(`   Removed invalid token for worker: ${worker.name}`);
+    // Update token statuses based on results
+    if (result.responses) {
+      for (let i = 0; i < result.responses.length; i++) {
+        const response = result.responses[i];
+        const tokenDoc = tokens[i];
+        
+        if (response.success) {
+          await tokenDoc.markAsSuccessful();
+        } else {
+          await tokenDoc.markAsFailed();
         }
-      });
+      }
     }
     
+    console.log(`✅ Notification sent to ${result.successCount}/${tokens.length} devices`);
+    
     return {
-      success: true,
-      successCount: result.successCount,
-      failureCount: result.failureCount
+      success: result.successCount > 0,
+      sent: result.successCount,
+      failed: result.failureCount,
+      total: tokens.length
     };
     
   } catch (error) {
-    console.error('❌ Failed to send push notifications:', error);
+    console.error('❌ Send notification to workers error:', error);
     throw error;
   }
 };
@@ -133,153 +148,289 @@ export const sendNotificationByAudience = async (notificationId) => {
   try {
     console.log('📤 Sending notification by audience:', notificationId);
     
-    // Get notification details
+    // Import Notification model dynamically to avoid circular dependency
+    const Notification = (await import('../models/Notification.js')).default;
+    
     const notification = await Notification.findById(notificationId);
     
     if (!notification) {
       throw new Error('Notification not found');
     }
     
-    console.log('   Target audience:', notification.targetAudience);
+    console.log('   Target Audience:', notification.targetAudience);
+    console.log('   Title:', notification.title);
+    console.log('   Message:', notification.message);
     
     let workerIds = [];
     
     // Determine target workers based on audience
-    switch (notification.targetAudience) {
-      case 'All':
-        // Get all workers with FCM tokens (not blocked)
-        const allWorkers = await Worker.find({
-          fcmToken: { $ne: null, $exists: true },
-          status: { $ne: 'Blocked' }
-        }).select('_id');
-        workerIds = allWorkers.map(w => w._id);
-        break;
-        
-      case 'City':
-        // Get workers in specific cities (not blocked)
-        const cityWorkers = await Worker.find({
-          city: { $in: notification.cities },
-          fcmToken: { $ne: null, $exists: true },
-          status: { $ne: 'Blocked' }
-        }).select('_id');
-        workerIds = cityWorkers.map(w => w._id);
-        break;
-        
-      case 'Category':
-        // Get workers in specific categories (not blocked)
-        const categoryWorkers = await Worker.find({
-          category: { $in: notification.categories },
-          fcmToken: { $ne: null, $exists: true },
-          status: { $ne: 'Blocked' }
-        }).select('_id');
-        workerIds = categoryWorkers.map(w => w._id);
-        break;
-        
-      case 'Custom':
-        // Use specific user IDs - verify they have FCM tokens
-        console.log('   Custom user IDs:', notification.userIds);
-        const customWorkers = await Worker.find({
-          _id: { $in: notification.userIds },
-          fcmToken: { $ne: null, $exists: true }
-        }).select('_id fcmToken name');
-        console.log(`   Found ${customWorkers.length} workers with FCM tokens out of ${notification.userIds.length} requested`);
-        customWorkers.forEach(w => {
-          console.log(`      - ${w.name}: ${w.fcmToken ? 'Has token' : 'No token'}`);
-        });
-        workerIds = customWorkers.map(w => w._id);
-        break;
-        
-      default:
-        throw new Error('Invalid target audience');
+    if (notification.targetAudience === 'All') {
+      // Get all approved workers
+      const workers = await Worker.find({ status: 'Approved' }).select('_id');
+      workerIds = workers.map(w => w._id);
+      console.log(`   Targeting all ${workerIds.length} approved workers`);
+      
+    } else if (notification.targetAudience === 'Specific') {
+      // Use specific user IDs
+      workerIds = notification.userIds || [];
+      console.log(`   Targeting ${workerIds.length} specific workers`);
+      
+    } else if (notification.targetAudience === 'City') {
+      // Filter by cities
+      const workers = await Worker.find({
+        status: 'Approved',
+        city: { $in: notification.cities || [] }
+      }).select('_id');
+      workerIds = workers.map(w => w._id);
+      console.log(`   Targeting ${workerIds.length} workers in cities:`, notification.cities);
+      
+    } else if (notification.targetAudience === 'Category') {
+      // Filter by categories
+      const workers = await Worker.find({
+        status: 'Approved',
+        category: { $in: notification.categories || [] }
+      }).select('_id');
+      workerIds = workers.map(w => w._id);
+      console.log(`   Targeting ${workerIds.length} workers in categories:`, notification.categories);
     }
-    
-    console.log(`   Target workers: ${workerIds.length}`);
     
     if (workerIds.length === 0) {
-      console.warn('⚠️ No target workers found');
-      await Notification.findByIdAndUpdate(notificationId, {
-        status: 'Sent',
-        sentAt: new Date(),
-        totalRecipients: 0,
-        deliveredCount: 0
-      });
-      return { success: true, sent: 0 };
+      console.log('⚠️ No workers found for target audience');
+      
+      // Update notification status
+      notification.status = 'Sent';
+      notification.sentAt = new Date();
+      notification.sentCount = 0;
+      await notification.save();
+      
+      return {
+        success: false,
+        sent: 0,
+        reason: 'No workers found for target audience'
+      };
     }
     
-    // Send notification
-    const result = await sendPushToMultipleWorkers(
+    // Prepare notification payload
+    const notificationPayload = {
+      title: notification.title,
+      body: notification.message,
+      imageUrl: notification.bannerImage || undefined
+    };
+    
+    // Prepare data payload
+    const dataPayload = {
+      notificationId: notification._id.toString(),
+      type: notification.type,
+      bannerPosition: notification.bannerPosition || '',
+      bannerLink: notification.bannerLink || '',
+      timestamp: new Date().toISOString()
+    };
+    
+    // Send notification to all target workers
+    const result = await sendNotificationToWorkers(
       workerIds,
-      {
-        title: notification.title,
-        body: notification.message,
-        imageUrl: notification.bannerImage
-      },
-      {
-        notificationId: notificationId.toString(),
-        type: notification.type,
-        bannerLink: notification.bannerLink
-      }
+      notificationPayload,
+      dataPayload
     );
     
     // Update notification status
-    await Notification.findByIdAndUpdate(notificationId, {
-      status: 'Sent',
-      sentAt: new Date(),
-      totalRecipients: workerIds.length,
-      deliveredCount: result.successCount
-    });
+    notification.status = 'Sent';
+    notification.sentAt = new Date();
+    notification.sentCount = result.sent || 0;
+    notification.failedCount = result.failed || 0;
+    await notification.save();
     
-    console.log('✅ Notification sent successfully');
-    return {
-      success: true,
-      sent: result.successCount,
-      failed: result.failureCount,
-      total: workerIds.length
-    };
+    console.log(`✅ Notification sent successfully`);
+    console.log(`   Sent: ${result.sent}`);
+    console.log(`   Failed: ${result.failed}`);
+    
+    return result;
     
   } catch (error) {
-    console.error('❌ Failed to send notification:', error);
-    
-    // Update notification status to failed
-    await Notification.findByIdAndUpdate(notificationId, {
-      status: 'Failed'
-    });
-    
+    console.error('❌ Send notification by audience error:', error);
     throw error;
   }
 };
 
 /**
- * Send test notification to a specific worker
+ * Send test notification to a worker
  */
 export const sendTestNotification = async (workerId) => {
   try {
     console.log('🧪 Sending test notification to worker:', workerId);
     
-    const result = await sendPushToWorker(
-      workerId,
-      {
-        title: '🧪 Test Notification',
-        body: 'This is a test notification from PaasoWork. If you see this, push notifications are working!'
-      },
-      {
-        type: 'test',
-        test: 'true'
-      }
-    );
+    const notification = {
+      title: '🎉 Test Notification',
+      body: 'This is a test notification from PaasoWork Admin Panel. If you received this, your FCM setup is working correctly!'
+    };
     
-    console.log('✅ Test notification sent');
+    const data = {
+      type: 'test',
+      timestamp: new Date().toISOString()
+    };
+    
+    const result = await sendNotificationToWorker(workerId, notification, data);
+    
+    if (result.success) {
+      console.log('✅ Test notification sent successfully');
+    } else {
+      console.log('❌ Test notification failed:', result.reason);
+    }
+    
     return result;
     
   } catch (error) {
-    console.error('❌ Failed to send test notification:', error);
+    console.error('❌ Send test notification error:', error);
+    throw error;
+  }
+};
+
+/**
+ * Send welcome notification to new worker
+ */
+export const sendWelcomeNotification = async (workerId) => {
+  try {
+    console.log('👋 Sending welcome notification to worker:', workerId);
+    
+    const worker = await Worker.findById(workerId);
+    
+    if (!worker) {
+      throw new Error('Worker not found');
+    }
+    
+    const notification = {
+      title: `Welcome to PaasoWork, ${worker.name}! 🎉`,
+      body: 'Your account has been approved. Start exploring job opportunities and grow your business with us!'
+    };
+    
+    const data = {
+      type: 'welcome',
+      screen: 'Dashboard',
+      timestamp: new Date().toISOString()
+    };
+    
+    const result = await sendNotificationToWorker(workerId, notification, data);
+    
+    console.log('✅ Welcome notification sent');
+    
+    return result;
+    
+  } catch (error) {
+    console.error('❌ Send welcome notification error:', error);
+    throw error;
+  }
+};
+
+/**
+ * Send approval notification to worker
+ */
+export const sendApprovalNotification = async (workerId) => {
+  try {
+    console.log('✅ Sending approval notification to worker:', workerId);
+    
+    const worker = await Worker.findById(workerId);
+    
+    if (!worker) {
+      throw new Error('Worker not found');
+    }
+    
+    const notification = {
+      title: '✅ Account Approved!',
+      body: `Congratulations ${worker.name}! Your PaasoWork account has been approved. You can now start receiving job opportunities.`
+    };
+    
+    const data = {
+      type: 'approval',
+      screen: 'Dashboard',
+      timestamp: new Date().toISOString()
+    };
+    
+    const result = await sendNotificationToWorker(workerId, notification, data);
+    
+    console.log('✅ Approval notification sent');
+    
+    return result;
+    
+  } catch (error) {
+    console.error('❌ Send approval notification error:', error);
+    throw error;
+  }
+};
+
+/**
+ * Send rejection notification to worker
+ */
+export const sendRejectionNotification = async (workerId, reason = '') => {
+  try {
+    console.log('❌ Sending rejection notification to worker:', workerId);
+    
+    const worker = await Worker.findById(workerId);
+    
+    if (!worker) {
+      throw new Error('Worker not found');
+    }
+    
+    const notification = {
+      title: 'Application Update',
+      body: reason || 'Your application has been reviewed. Please contact support for more information.'
+    };
+    
+    const data = {
+      type: 'rejection',
+      screen: 'Support',
+      timestamp: new Date().toISOString()
+    };
+    
+    const result = await sendNotificationToWorker(workerId, notification, data);
+    
+    console.log('✅ Rejection notification sent');
+    
+    return result;
+    
+  } catch (error) {
+    console.error('❌ Send rejection notification error:', error);
+    throw error;
+  }
+};
+
+/**
+ * Send job alert notification
+ */
+export const sendJobAlertNotification = async (workerIds, jobDetails) => {
+  try {
+    console.log(`💼 Sending job alert to ${workerIds.length} workers`);
+    
+    const notification = {
+      title: '💼 New Job Alert!',
+      body: jobDetails.title || 'A new job matching your profile is available. Check it out now!'
+    };
+    
+    const data = {
+      type: 'job_alert',
+      job_id: jobDetails.id || '',
+      screen: 'JobDetails',
+      timestamp: new Date().toISOString()
+    };
+    
+    const result = await sendNotificationToWorkers(workerIds, notification, data);
+    
+    console.log('✅ Job alert sent');
+    
+    return result;
+    
+  } catch (error) {
+    console.error('❌ Send job alert error:', error);
     throw error;
   }
 };
 
 export default {
-  sendPushToWorker,
-  sendPushToMultipleWorkers,
+  sendNotificationToWorker,
+  sendNotificationToWorkers,
   sendNotificationByAudience,
-  sendTestNotification
+  sendTestNotification,
+  sendWelcomeNotification,
+  sendApprovalNotification,
+  sendRejectionNotification,
+  sendJobAlertNotification
 };
