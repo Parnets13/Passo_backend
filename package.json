@@ -11,7 +11,9 @@
     "test": "jest --coverage",
     "lint": "eslint src/**/*.js",
     "check-firebase": "node check-firebase-credentials.js",
-    "setup": "node check-firebase-credentials.js && npm start"
+    "setup": "node check-firebase-credentials.js && npm start",
+    "test:unlock": "node test-unlock-integration.js",
+    "test:unlock-api": "node test-unlock-api.js"
   },
   "keywords": [
     "admin",

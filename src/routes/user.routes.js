@@ -6,14 +6,18 @@ import {
   blockUser,
   unblockUser,
   issueCredits,
-  getUserHistory
+  getUserHistory,
+  recordUnlock
 } from '../controllers/user.controller.js';
 import { protect } from '../middleware/auth.js';
 import { validate } from '../middleware/validate.js';
 
 const router = express.Router();
 
-// All routes require authentication
+// Public route - Record unlock after payment (no auth required)
+router.post('/:id/unlock', recordUnlock);
+
+// All other routes require authentication
 router.use(protect);
 
 const creditValidation = [

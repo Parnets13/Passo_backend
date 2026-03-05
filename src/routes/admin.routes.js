@@ -7,6 +7,143 @@ const router = express.Router();
 // For admin panel to fetch data
 // ============================================
 
+// ============================================
+// USER MANAGEMENT ROUTES
+// ============================================
+
+// Get user stats for admin dashboard (MUST BE BEFORE /users/:id)
+router.get('/users/stats/summary', async (req, res) => {
+  try {
+    console.log('📊 Admin: Fetching user stats');
+    const User = (await import('../models/User.js')).default;
+    
+    const totalUsers = await User.countDocuments();
+    const activeUsers = await User.countDocuments({ status: 'Active' });
+    const blockedUsers = await User.countDocuments({ status: 'Blocked' });
+    
+    // Calculate total unlocks and revenue
+    const users = await User.find({}).select('unlocks totalSpent');
+    const totalUnlocks = users.reduce((sum, user) => sum + (user.unlocks || 0), 0);
+    const totalRevenue = users.reduce((sum, user) => sum + (user.totalSpent || 0), 0);
+
+    console.log('✅ Admin: User stats fetched');
+    res.status(200).json({
+      success: true,
+      data: {
+        totalUsers,
+        activeUsers,
+        blockedUsers,
+        totalUnlocks,
+        totalRevenue
+      }
+    });
+  } catch (error) {
+    console.error('❌ Admin user stats fetch error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch user stats',
+      error: error.message
+    });
+  }
+});
+
+// Get all users with unlock data
+router.get('/users', async (req, res) => {
+  try {
+    console.log('👥 Admin: Fetching all users');
+    const User = (await import('../models/User.js')).default;
+    
+    const {
+      page = 1,
+      limit = 50,
+      status,
+      search,
+      sortBy = 'createdAt',
+      order = 'desc'
+    } = req.query;
+
+    // Build query
+    const query = {};
+    
+    if (status) query.status = status;
+    if (search) {
+      query.$or = [
+        { name: { $regex: search, $options: 'i' } },
+        { mobile: { $regex: search, $options: 'i' } },
+        { email: { $regex: search, $options: 'i' } }
+      ];
+    }
+
+    // Execute query with pagination
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+    const sortOrder = order === 'desc' ? -1 : 1;
+
+    const users = await User.find(query)
+      .select('-password')
+      .sort({ [sortBy]: sortOrder })
+      .skip(skip)
+      .limit(parseInt(limit));
+
+    const total = await User.countDocuments(query);
+
+    console.log(`✅ Admin: Found ${users.length} users (Total: ${total})`);
+
+    res.status(200).json({
+      success: true,
+      data: users,
+      pagination: {
+        page: parseInt(page),
+        limit: parseInt(limit),
+        total,
+        pages: Math.ceil(total / parseInt(limit))
+      }
+    });
+  } catch (error) {
+    console.error('❌ Admin users fetch error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch users',
+      error: error.message
+    });
+  }
+});
+
+// Get single user with full unlock history
+router.get('/users/:id', async (req, res) => {
+  try {
+    console.log('👤 Admin: Fetching user:', req.params.id);
+    const User = (await import('../models/User.js')).default;
+    
+    const user = await User.findById(req.params.id)
+      .select('-password')
+      .populate('unlockHistory.workerId', 'name mobile category');
+    
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    console.log('✅ Admin: User found with unlock history');
+    res.status(200).json({
+      success: true,
+      data: user
+    });
+  } catch (error) {
+    console.error('❌ Admin user fetch error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch user',
+      error: error.message
+    });
+  }
+});
+
+// ============================================
+// WORKER MANAGEMENT ROUTES
+// ============================================
+
 // Get all workers for admin panel (POST method for admin panel compatibility)
 router.post('/workers', async (req, res) => {
   try {

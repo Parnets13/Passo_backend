@@ -194,3 +194,69 @@ export const getUserHistory = async (req, res, next) => {
     next(error);
   }
 };
+
+// @desc    Record unlock contact (called after payment success)
+// @route   POST /api/users/:id/unlock
+// @access  Public (called from app after payment)
+export const recordUnlock = async (req, res, next) => {
+  try {
+    const { workerId, workerName, workerMobile, category, amount } = req.body;
+    
+    const user = await User.findById(req.params.id);
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    // Check if already unlocked
+    const alreadyUnlocked = user.unlockHistory?.some(
+      unlock => unlock.workerId?.toString() === workerId
+    );
+
+    if (alreadyUnlocked) {
+      return res.status(200).json({
+        success: true,
+        message: 'Contact already unlocked',
+        data: { unlocked: true }
+      });
+    }
+
+    // Add to unlock history
+    if (!user.unlockHistory) {
+      user.unlockHistory = [];
+    }
+    
+    user.unlockHistory.push({
+      workerId,
+      workerName,
+      workerMobile,
+      category,
+      amount,
+      date: new Date()
+    });
+
+    // Update stats
+    user.unlocks = (user.unlocks || 0) + 1;
+    user.totalSpent = (user.totalSpent || 0) + amount;
+
+    await user.save();
+
+    console.log('✅ Unlock recorded for user:', user._id);
+
+    res.status(200).json({
+      success: true,
+      message: 'Unlock recorded successfully',
+      data: {
+        unlocked: true,
+        unlocks: user.unlocks,
+        totalSpent: user.totalSpent
+      }
+    });
+  } catch (error) {
+    console.error('❌ Record unlock error:', error);
+    next(error);
+  }
+};
