@@ -9,7 +9,9 @@
     "dev": "nodemon src/server.js",
     "seed": "node src/utils/seedData.js",
     "test": "jest --coverage",
-    "lint": "eslint src/**/*.js"
+    "lint": "eslint src/**/*.js",
+    "check-firebase": "node check-firebase-credentials.js",
+    "setup": "node check-firebase-credentials.js && npm start"
   },
   "keywords": [
     "admin",

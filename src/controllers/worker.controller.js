@@ -18,7 +18,8 @@ export const getWorkers = async (req, res, next) => {
       city, 
       status, 
       verified, 
-      featured 
+      featured,
+      search 
     } = req.query;
 
     const query = {};
@@ -29,6 +30,15 @@ export const getWorkers = async (req, res, next) => {
     if (status) query.status = status;
     if (verified !== undefined) query.verified = verified === 'true';
     if (featured !== undefined) query.featured = featured === 'true';
+    
+    // Enhanced search - search in name, category, and city
+    if (search) {
+      query.$or = [
+        { name: { $regex: search, $options: 'i' } },
+        { category: { $regex: search, $options: 'i' } },
+        { city: { $regex: search, $options: 'i' } }
+      ];
+    }
 
     const workers = await Worker.find(query)
       .select('-password')
